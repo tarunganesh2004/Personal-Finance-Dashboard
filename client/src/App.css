@@ -33,3 +33,7 @@
 .form-control.w-auto {
   width: 150px !important;
 }
+
+.navbar-text {
+  color: #ffffff !important;
+}

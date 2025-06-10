@@ -1,98 +1,211 @@
+// @ts-nocheck
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
-
+const session = require('express-session');
+const bcrypt = require('bcrypt');
 const app = express();
-app.use(cors());
+const port = 3000;
+
+// Middleware
+app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
 app.use(express.json());
+app.use(session({
+    secret: 'your-session-secret', // Use a secure secret in production
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+}));
 
-const db = new sqlite3.Database('finance.db', (err) => {
-    if (err) console.error('Database connection error:', err);
-    else console.log('Connected to SQLite database');
-});
+// Database setup
+const db = new sqlite3.Database('finance.db');
 
-db.run(`
-  CREATE TABLE IF NOT EXISTS transactions (
+// Initialize database with users and transactions tables
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+  )`);
+    db.run(`CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     description TEXT,
     amount REAL,
     category TEXT,
-    date TEXT
-  )
-`);
+    date TEXT,
+    userId INTEGER,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  )`);
+});
 
-app.get('/api/transactions', (req, res) => {
-    db.all('SELECT * FROM transactions', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
+// Middleware to check if user is authenticated
+const isAuthenticated = (req, res, next) => {
+    if (req.session.user) {
+        next();
+    } else {
+        res.status(401).json({ error: 'Unauthorized' });
+    }
+};
+
+// Register endpoint
+app.post('/api/register', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        db.run(
+            'INSERT INTO users (username, password) VALUES (?, ?)',
+            [username, hashedPassword],
+            function (err) {
+                if (err) {
+                    if (err.message.includes('UNIQUE constraint failed')) {
+                        return res.status(400).json({ error: 'Username already exists' });
+                    }
+                    return res.status(500).json({ error: 'Error registering user' });
+                }
+                res.status(201).json({ message: 'User registered successfully' });
+            }
+        );
+    } catch (error) {
+        res.status(500).json({ error: 'Error registering user' });
+    }
+});
+
+// Login endpoint
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+        if (err || !user) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        req.session.user = { id: user.id, username: user.username };
+        res.json({ message: 'Login successful', user: { username: user.username } });
+    });
+});
+
+// Logout endpoint
+app.post('/api/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error logging out' });
+        }
+        res.json({ message: 'Logout successful' });
+    });
+});
+
+// Get current user endpoint
+app.get('/api/user', (req, res) => {
+    if (req.session.user) {
+        res.json({ user: { username: req.session.user.username } });
+    } else {
+        res.status(401).json({ error: 'Not authenticated' });
+    }
+});
+
+// Transactions endpoints (protected)
+app.get('/api/transactions', isAuthenticated, (req, res) => {
+    db.all('SELECT * FROM transactions WHERE userId = ?', [req.session.user.id], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error fetching transactions' });
+        }
         res.json(rows);
     });
 });
 
-app.post('/api/transactions', (req, res) => {
+app.post('/api/transactions', isAuthenticated, (req, res) => {
     const { description, amount, category, date } = req.body;
     db.run(
-        'INSERT INTO transactions (description, amount, category, date) VALUES (?, ?, ?, ?)',
-        [description, amount, category, date],
+        'INSERT INTO transactions (description, amount, category, date, userId) VALUES (?, ?, ?, ?, ?)',
+        [description, amount, category, date, req.session.user.id],
         function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ id: this.lastID });
+            if (err) {
+                return res.status(500).json({ error: 'Error adding transaction' });
+            }
+            res.status(201).json({ id: this.lastID });
         }
     );
 });
 
-app.delete('/api/transactions/:id', (req, res) => {
+app.put('/api/transactions/:id', isAuthenticated, (req, res) => {
     const { id } = req.params;
-    db.run('DELETE FROM transactions WHERE id = ?', [id], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ deleted: this.changes });
-    });
-});
-
-app.put('/api/transactions/:id', (req, res) => {
-    const { id } = req.params;
-    const { description, amount, category, date } = req.body;
+    const { description, amount, category } = req.body;
     db.run(
-        'UPDATE transactions SET description = ?, amount = ?, category = ?, date = ? WHERE id = ?',
-        [description, amount, category, date, id],
+        'UPDATE transactions SET description = ?, amount = ?, category = ? WHERE id = ? AND userId = ?',
+        [description, amount, category, id, req.session.user.id],
         function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ updated: this.changes });
+            if (err) {
+                return res.status(500).json({ error: 'Error updating transaction' });
+            }
+            if (this.changes === 0) {
+                return res.status(404).json({ error: 'Transaction not found or not authorized' });
+            }
+            res.json({ message: 'Transaction updated' });
         }
     );
 });
 
-app.delete('/api/transactions', (req, res) => {
-    db.run('DELETE FROM transactions', [], function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ deleted: this.changes });
+app.delete('/api/transactions/:id', isAuthenticated, (req, res) => {
+    const { id } = req.params;
+    db.run('DELETE FROM transactions WHERE id = ? AND userId = ?', [id, req.session.user.id], function (err) {
+        if (err) {
+            return res.status(500).json({ error: 'Error deleting transaction' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Transaction not found or not authorized' });
+        }
+        res.json({ message: 'Transaction deleted' });
     });
 });
 
-app.get('/api/category-summary', (req, res) => {
-    db.all('SELECT * FROM category_summary', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+app.delete('/api/transactions', isAuthenticated, (req, res) => {
+    db.run('DELETE FROM transactions WHERE userId = ?', [req.session.user.id], function (err) {
+        if (err) {
+            return res.status(500).json({ error: 'Error clearing transactions' });
+        }
+        res.json({ message: 'All transactions cleared' });
     });
 });
 
+// Category summary endpoint (protected)
+app.get('/api/category-summary', isAuthenticated, (req, res) => {
+    db.all(
+        'SELECT category, SUM(amount) as amount FROM transactions WHERE userId = ? GROUP BY category',
+        [req.session.user.id],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ error: 'Error fetching category summary' });
+            }
+            res.json(rows);
+        }
+    );
+});
+
+// Interest calculation endpoint
 app.post('/api/calculate-interest', (req, res) => {
     const { principal, rate, years } = req.body;
-    if (!principal || !rate || !years) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
     const futureValue = principal * Math.pow(1 + rate / 100, years);
     res.json({ futureValue });
 });
 
-app.post('/api/check-budget', (req, res) => {
+// Budget check endpoint (protected)
+app.post('/api/check-budget', isAuthenticated, (req, res) => {
     const { budget, totalSpent } = req.body;
-    if (!budget || !totalSpent) {
-        return res.status(400).json({ error: 'Missing required fields' });
+    if (totalSpent > budget) {
+        res.json({ message: `Budget exceeded by $${(totalSpent - budget).toFixed(2)}` });
+    } else {
+        res.json({ message: `Within budget by $${(budget - totalSpent).toFixed(2)}` });
     }
-    const message = totalSpent > budget
-        ? 'Alert: You have exceeded your budget!'
-        : 'You are within your budget.';
-    res.json({ message });
 });
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+});
