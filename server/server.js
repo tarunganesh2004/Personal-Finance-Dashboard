@@ -5,20 +5,28 @@ const cors = require('cors');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
 const app = express();
-const port = 3000;
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+}));
 app.use(express.json());
 app.use(session({
-    secret: 'your-session-secret', // Use a secure secret in production
+    secret: process.env.SESSION_SECRET || 'your-session-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+    cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 }
 }));
 
 // Database setup
-const db = new sqlite3.Database('finance.db');
+const db = new sqlite3.Database('./db/finance.db', (err) => {
+    if (err) {
+        console.error('Error connecting to the database:', err.message);
+    } else {
+        console.log('Connected to the SQLite database.');
+    }
+});
 
 // Initialize database with users and transactions tables
 db.serialize(() => {
@@ -206,6 +214,7 @@ app.post('/api/check-budget', isAuthenticated, (req, res) => {
     }
 });
 
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
