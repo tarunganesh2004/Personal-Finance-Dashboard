@@ -1,5 +1,6 @@
 .container {
   max-width: 800px;
+  min-height: 100vh;
 }
 
 .chart-container {
@@ -19,4 +20,16 @@
 
 .modal-backdrop {
   background-color: rgba(0, 0, 0, 0.5);
+}
+
+.d-flex.gap-2 {
+  gap: 10px;
+}
+
+.d-flex.flex-wrap {
+  gap: 10px;
+}
+
+.form-control.w-auto {
+  width: 150px !important;
 }

@@ -2,8 +2,12 @@ function TransactionList({ transactions, onDelete, onEdit }) {
     return (
         <div className="transaction-list">
             <ul className="list-group">
-                {transactions.map((t) => (
-                    <li key={t.id} className="list-group-item d-flex justify-content-between align-items-center">
+                {transactions.map((t, index) => (
+                    <li
+                        key={t.id}
+                        className="list-group-item d-flex justify-content-between align-items-center animate-fade-in"
+                        style={{ animationDelay: `${index * 0.1}s` }}
+                    >
                         <span>
                             {t.description} - ${t.amount.toFixed(2)} ({t.category}) on{' '}
                             {new Date(t.date).toLocaleDateString()}
