@@ -13,6 +13,7 @@ import './background.css';
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 function App() {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [filterCategory, setFilterCategory] = useState('All');
@@ -108,7 +109,7 @@ function App() {
 
   const checkUser = async () => {
     try {
-      const response = await axios.get('/api/user', { withCredentials: true });
+      const response = await axios.get(`${API_URL}/api/user`, { withCredentials: true });
       setUser(response.data.user);
     } catch (error) {
       setUser(null);
@@ -118,7 +119,7 @@ function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('/api/login', { username, password }, { withCredentials: true });
+      const response = await axios.post(`${API_URL}/api/login`, { username, password }, { withCredentials: true });
       setUser(response.data.user);
       setShowLoginModal(false);
       setAuthError('');
@@ -132,8 +133,8 @@ function App() {
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('/api/register', { username, password }, { withCredentials: true });
-      const response = await axios.post('/api/login', { username, password }, { withCredentials: true });
+      await axios.post(`${API_URL}/api/register`, { username, password }, { withCredentials: true });
+      const response = await axios.post(`${API_URL}/api/login`, { username, password }, { withCredentials: true });
       setUser(response.data.user);
       setShowRegisterModal(false);
       setAuthError('');
@@ -146,7 +147,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await axios.post('/api/logout', {}, { withCredentials: true });
+      await axios.post(`${API_URL}/api/logout`, {}, { withCredentials: true });
       setUser(null);
       setTransactions([]);
       setFilteredTransactions([]);
@@ -162,7 +163,7 @@ function App() {
 
   const fetchTransactions = async () => {
     try {
-      const response = await axios.get('/api/transactions', { withCredentials: true });
+      const response = await axios.get(`${API_URL}/api/transactions`, { withCredentials: true });
       setTransactions(response.data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -171,7 +172,7 @@ function App() {
 
   const fetchCategorySummary = async () => {
     try {
-      const response = await axios.get('/api/category-summary', { withCredentials: true });
+      const response = await axios.get(`${API_URL}/api/category-summary`, { withCredentials: true });
       setCategorySummary(response.data);
     } catch (error) {
       console.error('Error fetching category summary:', error);
@@ -180,7 +181,7 @@ function App() {
 
   const addTransaction = async (transaction) => {
     try {
-      await axios.post('/api/transactions', transaction, { withCredentials: true });
+      await axios.post(`${API_URL}/api/transactions`, transaction, { withCredentials: true });
       fetchTransactions();
     } catch (error) {
       console.error('Error adding transaction:', error);
@@ -189,7 +190,7 @@ function App() {
 
   const deleteTransaction = async () => {
     try {
-      await axios.delete(`/api/transactions/${transactionToDelete}`, { withCredentials: true });
+      await axios.delete(`${API_URL}/api/transactions/${transactionToDelete}`, { withCredentials: true });
       fetchTransactions();
       setShowDeleteModal(false);
       setTransactionToDelete(null);
@@ -200,7 +201,7 @@ function App() {
 
   const clearTransactions = async () => {
     try {
-      await axios.delete('/api/transactions', { withCredentials: true });
+      await axios.delete(`${API_URL}/api/transactions`, { withCredentials: true });
       fetchTransactions();
       setShowClearModal(false);
     } catch (error) {
@@ -216,7 +217,7 @@ function App() {
   const updateTransaction = async (e) => {
     e.preventDefault();
     try {
-      await axios.put(`/api/transactions/${editTransaction.id}`, editTransaction, { withCredentials: true });
+      await axios.put(`${API_URL}/api/transactions/${editTransaction.id}`, editTransaction, { withCredentials: true });
       fetchTransactions();
       setShowEditModal(false);
     } catch (error) {
@@ -227,7 +228,7 @@ function App() {
   const calculateSavings = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('/api/calculate-interest', {
+      const response = await axios.post(`${API_URL}/api/calculate-interest`, {
         principal: parseFloat(principal),
         rate: parseFloat(rate),
         years: parseInt(years),
@@ -242,7 +243,7 @@ function App() {
     e.preventDefault();
     try {
       const totalSpent = transactions.reduce((sum, t) => sum + t.amount, 0);
-      const response = await axios.post('/api/check-budget', {
+      const response = await axios.post(`${API_URL}/api/check-budget`, {
         budget: parseFloat(budget),
         totalSpent,
       }, { withCredentials: true });
